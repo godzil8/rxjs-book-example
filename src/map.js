@@ -24,7 +24,7 @@ function getBuesType(name) {
 // 네이버 지도 생성
 function createNaverMap($map) {
     return new naver.maps.Map($map, {
-        zoom: 11,
+        zoom: 14,
         minZoom: 6
     });
 }
@@ -104,6 +104,8 @@ export default class Map {
             search$,
             this.createDragend$()
         ).pipe(
+            // 함수만 넘기는 것이 아니라 화살표 함수로 넘기는 것이 가독성에도 더 좋다.
+            // (coord$) => this.mapStation(coord$)
             this.mapStation,
             this.manageMarker.bind(this),
             this.mapMarkerClick,
@@ -131,25 +133,21 @@ export default class Map {
             }))
         );
     }
+
+    // 좌표로 정류소 목록 가져오기
     mapStation(coord$) {
         return coord$
             .pipe(
+                // coord 좌표 -> 좌표를 통한 버스 정류소 목록 값으로 변환 : map operator
+                // ajax 결과 자체가 Obsevable 이므로, 중첩 Observable 형태가 되므로 기존 map이 아닌 switchMap/MergeMap 사용
+                // 연속적인 요청에서 기존 요청은 취소하는 것(구독 해지)이 맞으므로 switchMap 사용
                 switchMap(coord => ajax.getJSON(`/station/around/${coord.longitude}/${coord.latitude}`)),
                 handleAjax("busStationAroundList")
             );
     }
-    mapMarkerClick(marker$) {
-        return marker$
-        .pipe(
-            mergeMap(marker => fromEvent(marker, "click")),
-            map(({ overlay }) => ({
-                marker: overlay,
-                position: overlay.getPosition(),
-                id: overlay.getOptions("id"), // 버스정류소ID 정보를 얻음
-                name: overlay.getOptions("name") // 버스정류소 이름을 얻음
-            }))
-        );
-    }
+
+    // 정류소 목록 기반으로 마커 생성
+    // 이전에 마커가 있다면 삭제 후 생성
     manageMarker(station$) {
         return station$
         .pipe(
@@ -160,15 +158,38 @@ export default class Map {
                 marker.setOptions("name", station.stationName);
                 return marker;
             })),
+            // prev : 이전 dragend이벤트에 대한 마커들의 observable 값
+            // markers : 현재 마커들의 observable 값
             scan((prev, markers) => {
                 // 이전 markers 삭제
                 prev.forEach(this.deleteMarker);
                 prev = markers;
                 return prev;
             }, []),
+            // mergeMap 사용 이유 : station&은 배열이므로 scan에서는 단일로 반환해야함
+            // 이유는?
+            // from : markers 배열을 하나의 Observable로 만듬
             mergeMap(markers => from(markers))
         );
     }
+
+    // 생성된 마커 클릭 후 정류소 정보 생성
+    mapMarkerClick(marker$) {
+        return marker$
+        .pipe(
+            // mergeMap 이해안됨
+            // 매개변수로 들어오는 marker$ observable은 하나의 스트림이 아닌 여러 스트림이기 때문일까?
+            mergeMap(marker => fromEvent(marker, "click")),
+            map(({ overlay }) => ({
+                marker: overlay,
+                position: overlay.getPosition(),
+                id: overlay.getOptions("id"), // 버스정류소ID 정보를 얻음
+                name: overlay.getOptions("name") // 버스정류소 이름을 얻음
+            }))
+        );
+    }
+
+    // 클릭한 정류소를 경유하는 버스들 번호 목록
     mapBus(markerInfo$) {
         return markerInfo$
         .pipe(
