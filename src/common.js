@@ -44,6 +44,7 @@ export function createShare$() {
     )
     .pipe(
 	    map(() => parseHash()),
+        // render$, search$ 에서 데이터를 공유하기 위해
     	share()
     );
 
@@ -56,13 +57,16 @@ export function createShare$() {
         handleAjax("busRouteStationList")
     );
 
+    search$ = search$.pipe(geolocation);
+
     return {
         render$,
-        search$: search$.pipe(geolocation)
+        search$
     };
 }
 
 function geolocation() {
+    console.log('geolocation');
     // 서울 시청
     const defaultPosition = {
         coords: {
